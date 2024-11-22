@@ -1,5 +1,3 @@
-
-
 # Step to do sur le mac : 
 uv venv
 
@@ -17,13 +15,13 @@ playwright install
 
 create .env
 
-  *AUTOGEN_MODEL_NAME="gpt-4o-mini"
-  *AUTOGEN_MODEL_API_KEY="sk-proj..."
-  *OPENAI_API_KEY="sk-proj-..."
-  *BROWSER_STORAGE_DIR="/Users/vinh/Library/Application Support/Google/Chrome/Profile 5"
-  *LLM Configuration
-  *AGENTS_LLM_CONFIG_FILE="agents_llm_config.json"
-  *AGENTS_LLM_CONFIG_FILE_REF_KEY="openai_gpt"*
+* *AUTOGEN_MODEL_NAME="gpt-4o-mini"* 
+* *AUTOGEN_MODEL_API_KEY="sk-proj..."* 
+* *OPENAI_API_KEY="sk-proj..."* 
+* *BROWSER_STORAGE_DIR="/Users/vinh/Library/Application Support/Google/Chrome/Profile 5"* 
+* *LLM Configuration* 
+* *AGENTS_LLM_CONFIG_FILE="agents_llm_config.json"* 
+* *AGENTS_LLM_CONFIG_FILE_REF_KEY="openai_gpt"* 
 
 
 create agents_llm_config.json
@@ -198,6 +196,7 @@ If you encounter `BlockingIOError` (Errno 35) when running the program on macOS,
 ```bash
 python -u -m ae.main
 ```
+Note: Using unbuffered output may result in some output not appearing in the terminal.
 
 ### Expected Behavior
 Once Agent-E is running, you should see an icon in the browser interface. Clicking on this icon will open a chat-like interface where you can input natural language commands. Example commands you can try:
@@ -626,5 +625,3 @@ Here are some features and improvements planned for future releases of Agent-E:
 - ~~**Action Verification**: Implement response for every skill that reflects DOM changes (using Mutation Observers), so the LLM can judge if the skill executed properly.~~
 - ~~**Execution Planner**: Develop a planner agent that can make the LLM decide on multiple steps ahead for faster execution.~~
 - ~~[Nested chat did the trick]**Group Chat**: Enable group chat features and move some skills to different agents.~~
-
-
