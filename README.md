@@ -1,3 +1,28 @@
+
+
+# Step to do : 
+uv venv
+source .venv/bin/activate
+brew install python
+uv pip compile pyproject.toml -o requirements.txt
+uv pip install -r requirements.txt
+uv pip install -r pyproject.toml --extra dev
+playwright install
+
+  create .env
+    AUTOGEN_MODEL_NAME="gpt-4o-mini"
+    AUTOGEN_MODEL_API_KEY="sk-proj..."
+    OPENAI_API_KEY="sk-proj-..."
+
+    BROWSER_STORAGE_DIR="/Users/vinh/Library/Application Support/Google/Chrome/Profile 5"
+
+    # LLM Configuration
+    AGENTS_LLM_CONFIG_FILE="agents_llm_config.json"
+    AGENTS_LLM_CONFIG_FILE_REF_KEY="openai_gpt"
+
+  create agents_llm_config.json
+
+
 # Agent-E
 **[Try our cloud version](https://www.emergence.ai/web-automation-api)**
 
