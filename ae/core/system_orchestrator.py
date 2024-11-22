@@ -44,6 +44,9 @@ class SystemOrchestrator:
         self.planner_number_of_rounds = planner_max_chat_round
         self.browser_number_of_rounds = browser_nav_max_chat_round
 
+        # Créer un ID de session unique au démarrage
+        self.session_id = int(time.time())
+
         self.agent_scenario = agent_scenario
         self.input_mode = input_mode
         self.browser_manager = None
@@ -89,6 +92,12 @@ class SystemOrchestrator:
         """
         Initializes the components required for the system's operation, including the Autogen wrapper and the Playwright manager.
         """
+        # Clear previous chat messages at startup
+        chat_messages_path = os.path.join(SOURCE_LOG_FOLDER_PATH, 'chat_messages.json')
+        if os.path.exists(chat_messages_path):
+            os.remove(chat_messages_path)
+            logger.info("Cleared previous chat messages")
+
         # Load the configuration using AgentsLLMConfig
         llm_config = AgentsLLMConfig()
 
@@ -200,16 +209,20 @@ class SystemOrchestrator:
     async def save_planner_chat_messages(self):
         """
         Saves the chat messages from the Autogen wrapper's agents to a JSON file.
+        Uses session_id to maintain consistency within a session while avoiding conflicts between sessions.
         """
-
-        messages = self.autogen_wrapper.agents_map[self.planner_agent_name].chat_messages # type: ignore
-        messages_str_keys = {str(key): value for key, value in messages.items()} # type: ignore
+        messages = self.autogen_wrapper.agents_map[self.planner_agent_name].chat_messages
+        messages_str_keys = {str(key): value for key, value in messages.items()}
+        
         if self.save_chat_logs_to_files:
-            with open(os.path.join(SOURCE_LOG_FOLDER_PATH, 'chat_messages.json'), 'w', encoding='utf-8') as f:
+            filename = f'chat_messages_{self.session_id}.json'
+            filepath = os.path.join(SOURCE_LOG_FOLDER_PATH, filename)
+            
+            with open(filepath, 'w', encoding='utf-8') as f:
                 json.dump(messages_str_keys, f, ensure_ascii=False, indent=4)
-            logger.debug("Chat messages saved")
+            logger.debug(f"Chat messages saved to {filename}")
         else:
-            logger.info("Planner chat log: ", extra={"planner_chat_log": messages_str_keys}) # type: ignore
+            logger.info("Planner chat log: ", extra={"planner_chat_log": messages_str_keys})
 
     async def wait_for_exit(self):
         """

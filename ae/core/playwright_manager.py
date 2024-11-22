@@ -2,6 +2,7 @@ import asyncio
 import os
 import tempfile
 import time
+import atexit
 
 from playwright.async_api import async_playwright as playwright
 from playwright.async_api import BrowserContext
@@ -27,50 +28,104 @@ class PlaywrightManager:
     Attributes:
         browser_type (str): The type of browser to use ('chromium', 'firefox', 'webkit').
         isheadless (bool): Flag to launch the browser in headless mode or not.
-
-    The class ensures only one instance of itself, Playwright, and the browser is created during the application lifecycle.
+        _recorded_actions (list): List to store recorded Playwright actions
+        _is_recording (bool): Flag to indicate if actions are being recorded
+        _recording_file (str): Path to save recorded actions
     """
     _homepage = "https://www.google.com"
     _instance = None
+    _initialized = False
     _playwright = None # type: ignore
     _browser_context = None
     __async_initialize_done = False
     _take_screenshots = False
     _screenshots_dir = None
+    _recorded_actions = []
+    _is_recording = True
+    _recording_file = None
+    _recordings_dir = None
 
-    def __new__(cls, *args, **kwargs): # type: ignore
+    def __new__(cls, *args, **kwargs):
         """
         Ensures that only one instance of PlaywrightManager is created (singleton pattern).
         """
         if cls._instance is None:
             cls._instance = super().__new__(cls)
-            cls._instance.__initialized = False
-            logger.debug("Playwright instance created..")
+            logger.debug("Playwright instance created")
         return cls._instance
 
+    def record_action(self, action: str):
+        """
+        Record a Playwright action if recording is enabled and save immediately.
+        
+        Args:
+            action (str): The Playwright action to record
+        """
+        if not self._is_recording or not action:
+            return
+            
+        if self._recording_file is None:
+            logger.warning("Recording file not set. Call start_recording() first.")
+            return
+            
+        try:
+            self._recorded_actions.append(action)
+            # Sauvegarder immédiatement l'action dans le fichier
+            with open(self._recording_file, 'a') as f:
+                f.write(f"            {action}\n")
+                f.write(f"            time.sleep(0.5)  # Small delay between actions\n")
+            logger.info(f"Recorded and saved action: {action}")
+        except Exception as e:
+            logger.error(f"Failed to record action: {str(e)}")
 
+                
     def __init__(self, browser_type: str = "chromium", headless: bool = False, gui_input_mode: bool = True, screenshots_dir: str = "", take_screenshots: bool = False):
         """
         Initializes the PlaywrightManager with the specified browser type and headless mode.
-        Initialization occurs only once due to the singleton pattern.
-
-        Args:
-            browser_type (str, optional): The type of browser to use. Defaults to "chromium".
-            headless (bool, optional): Flag to launch the browser in headless mode or not. Defaults to False (non-headless).
         """
-        if self.__initialized:
+        if PlaywrightManager._initialized:
+            logger.debug("PlaywrightManager already initialized")
             return
+            
+        logger.info("Initializing PlaywrightManager")
+        
+        # Définir et créer le dossier recordings dans ae/
+        current_dir = os.path.dirname(os.path.abspath(__file__))  # ae/core
+        ae_dir = os.path.dirname(current_dir)  # ae/
+        self._recordings_dir = os.path.join(ae_dir, "recordings")
+        logger.info(f"Setting up recordings directory: {self._recordings_dir}")
+        try:
+            os.makedirs(self._recordings_dir, exist_ok=True)
+            logger.info(f"Recordings directory created/verified at: {self._recordings_dir}")
+        except Exception as e:
+            logger.error(f"Failed to create recordings directory: {str(e)}")
+            raise
+        
         self.browser_type = browser_type
         self.isheadless = headless
-        self.__initialized = True
+        self._recorded_actions = []
+        self._is_recording = True
+        self._recording_file = None
+        
         self.notification_manager = NotificationManager()
         self.user_response_event = asyncio.Event()
         if gui_input_mode:
             self.ui_manager: UIManager = UIManager()
-
+        
         self.set_take_screenshots(take_screenshots)
         self.set_screenshots_dir(screenshots_dir)
-
+        
+        # S'assurer que stop_recording est appelé à la fin
+        def cleanup():
+            if self._is_recording:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(self.stop_recording())
+                loop.close()
+                
+        atexit.register(cleanup)
+        
+        PlaywrightManager._initialized = True
 
     async def async_initialize(self):
         """
@@ -113,23 +168,50 @@ class PlaywrightManager:
         """
         Starts the Playwright instance if it hasn't been started yet. This method is idempotent.
         """
+        logger.info("Starting Playwright")
         if not PlaywrightManager._playwright:
-            PlaywrightManager._playwright: Playwright = await playwright().start()
+            try:
+                logger.info("Initializing Playwright instance")
+                PlaywrightManager._playwright: Playwright = await playwright().start()
+                
+                # Vérifier que le dossier recordings existe
+                if not os.path.exists(self._recordings_dir):
+                    logger.error(f"Recordings directory does not exist: {self._recordings_dir}")
+                    return
+                
+                # Start recording when Playwright starts
+                timestamp = time.strftime("%Y%m%d_%H%M%S")
+                recording_file = os.path.join(self._recordings_dir, f"playwright_actions_{timestamp}.py")
+                logger.info(f"Starting recording to file: {recording_file}")
+                self.start_recording(recording_file)
+                logger.info("Recording started successfully")
+            except Exception as e:
+                logger.error(f"Error during Playwright startup: {str(e)}")
+                raise
 
 
     async def stop_playwright(self):
         """
-        Stops the Playwright instance and resets it to None. This method should be called to clean up resources.
+        Stops the Playwright instance and resets it to None.
         """
-        # Close the browser context if it's initialized
-        if PlaywrightManager._browser_context is not None:
-            await PlaywrightManager._browser_context.close()
-            PlaywrightManager._browser_context = None
+        logger.info("Stopping Playwright")
+        try:
+            if self._is_recording:
+                logger.info("Stopping recording before shutdown")
+                await self.stop_recording()
 
-        # Stop the Playwright instance if it's initialized
-        if PlaywrightManager._playwright is not None: # type: ignore
-            await PlaywrightManager._playwright.stop()
-            PlaywrightManager._playwright = None # type: ignore
+            if PlaywrightManager._browser_context is not None:
+                logger.info("Closing browser context")
+                await PlaywrightManager._browser_context.close()
+                PlaywrightManager._browser_context = None
+
+            if PlaywrightManager._playwright is not None:
+                logger.info("Stopping Playwright instance")
+                await PlaywrightManager._playwright.stop()
+                PlaywrightManager._playwright = None
+        except Exception as e:
+            logger.error(f"Error during Playwright shutdown: {str(e)}")
+            raise
 
 
     async def create_browser_context(self):
@@ -241,12 +323,50 @@ class PlaywrightManager:
 
 
     async def go_to_homepage(self):
-        page:Page = await PlaywrightManager.get_current_page(self)
+        page = await self.get_current_page()
         await page.goto(self._homepage)
+        if self._is_recording:
+            self.record_action(f'await page.goto("{self._homepage}")')
+
+
+    async def goto(self, url: str):
+        """Navigate to a URL."""
+        page = await self.get_current_page()
+        await page.goto(url)
+        if self._is_recording:
+            logger.info("goto")
+            self.record_action(f'await page.goto("{url}")')
+
+
+    async def click(self, selector: str):
+        """Click an element."""
+        page = await self.get_current_page()
+        await page.click(selector)
+        if self._is_recording:
+            logger.info("click")
+            self.record_action(f'await page.click("{selector}")')
+
+
+    async def fill(self, selector: str, value: str):
+        """Fill a form field."""
+        page = await self.get_current_page()
+        await page.fill(selector, value)
+        if self._is_recording:
+            logger.info("fill")
+            self.record_action(f'await page.fill("{selector}", "{value}")')
+
+
+    async def press(self, selector: str, key: str):
+        """Press a key on an element."""
+        page = await self.get_current_page()
+        await page.press(selector, key)
+        if self._is_recording:
+            logger.info("press")
+            self.record_action(f'await page.press("{selector}", "{key}")')
 
 
     async def set_navigation_handler(self):
-        page:Page = await PlaywrightManager.get_current_page(self)
+        page = await self.get_current_page()
         page.on("domcontentloaded", self.ui_manager.handle_navigation) # type: ignore
         page.on("domcontentloaded", handle_navigation_for_mutation_observer) # type: ignore
         await page.expose_function("dom_mutation_change_detected", dom_mutation_change_detected) # type: ignore
@@ -412,7 +532,6 @@ class PlaywrightManager:
         except Exception as e:
             logger.error(f"Failed to take screenshot and save to \"{screenshot_path}\". Error: {e}")
 
-
     def log_user_message(self, message: str):
         """
         Log the user's message.
@@ -450,3 +569,70 @@ class PlaywrightManager:
         logger.debug(f"Command \"{command}\" has been completed. Focusing on the overlay input if it is open.")
         page = await self.get_current_page()
         await self.ui_manager.command_completed(page, command, elapsed_time)
+
+    def start_recording(self, output_file: str = None, user_request: str = None):
+        """
+        Start recording Playwright actions.
+        
+        Args:
+            output_file (str, optional): File to save recorded actions. Defaults to playwright_recorded_actions.py.
+            user_request (str, optional): The original user request that triggered this recording.
+        """
+        if output_file is None:
+            # Créer un nom de fichier avec un timestamp
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            output_file = os.path.join(self._recordings_dir, f"playwright_actions_{timestamp}.py")
+        
+        self._recording_file = output_file
+        self._is_recording = True
+        self._recorded_actions = []
+
+        # Créer le fichier avec le template de base
+        try:
+            with open(self._recording_file, 'w') as f:
+                f.write("from playwright.async_api import Page, BrowserContext\n")
+                f.write("import asyncio\n")
+                f.write("import time\n\n")
+                
+                if user_request:
+                    f.write(f"# Original request: {user_request}\n")
+                f.write(f"# Recording started at: {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+                
+                f.write("async def run_recorded_actions(page: Page):\n")
+                f.write("    try:\n")
+                f.write("        # Start of recorded actions\n")
+            logger.info(f"Started recording to file: {self._recording_file}")
+        except Exception as e:
+            logger.error(f"Failed to create recording file: {str(e)}")
+            self._is_recording = False
+            raise
+
+
+
+    async def stop_recording(self):
+        """
+        Stop recording and finalize the recording file.
+        """
+        if not self._is_recording:
+            return
+            
+        try:
+            with open(self._recording_file, 'a') as f:
+                f.write("        # End of recorded actions\n")
+                f.write("        return True\n")
+                f.write("    except Exception as e:\n")
+                f.write("        print(f'Error during playback: {str(e)}')\n")
+                f.write("        return False\n\n")
+                f.write("if __name__ == '__main__':\n")
+                f.write("    asyncio.run(run_recorded_actions())\n")
+            
+            logger.info(f"Recording stopped and saved to: {self._recording_file}")
+            
+            # Reset recording state
+            self._is_recording = False
+            self._recorded_actions = []
+            self._recording_file = None
+            
+        except Exception as e:
+            logger.error(f"Error while finalizing recording file: {str(e)}")
+            raise

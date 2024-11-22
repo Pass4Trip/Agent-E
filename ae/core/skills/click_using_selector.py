@@ -71,7 +71,7 @@ async def do_click(page: Page, selector: str, wait_before_execution: float) -> d
     Returns:
     dict[str,str] - Explanation of the outcome of this operation represented as a dictionary with 'summary_message' and 'detailed_message'.
     """
-    logger.info(f"Executing ClickElement with \"{selector}\" as the selector. Wait time before execution: {wait_before_execution} seconds.")
+    logger.info(f'Executing ClickElement with "{selector}" as the selector. Wait time before execution: {wait_before_execution} seconds.')
 
     # Wait before execution if specified
     if wait_before_execution > 0:
@@ -79,26 +79,26 @@ async def do_click(page: Page, selector: str, wait_before_execution: float) -> d
 
     # Wait for the selector to be present and ensure it's attached and visible. If timeout, try javascript click
     try:
-        logger.info(f"Executing ClickElement with \"{selector}\" as the selector. Waiting for the element to be attached and visible.")
+        logger.info(f'Executing ClickElement with "{selector}" as the selector. Waiting for the element to be attached and visible.')
 
         element = await asyncio.wait_for(
             page.wait_for_selector(selector, state="attached", timeout=2000),
             timeout=2000
         )
         if element is None:
-            raise ValueError(f"Element with selector: \"{selector}\" not found")
+            raise ValueError(f'Element with selector: "{selector}" not found')
 
-        logger.info(f"Element with selector: \"{selector}\" is attached. scrolling it into view if needed.")
+        logger.info(f'Element with selector: "{selector}" is attached. scrolling it into view if needed.')
         try:
             await element.scroll_into_view_if_needed(timeout=200)
-            logger.info(f"Element with selector: \"{selector}\" is attached and scrolled into view. Waiting for the element to be visible.")
+            logger.info(f'Element with selector: "{selector}" is attached and scrolled into view. Waiting for the element to be visible.')
         except Exception:
             # If scrollIntoView fails, just move on, not a big deal
             pass
 
         try:
             await element.wait_for_element_state("visible", timeout=200)
-            logger.info(f"Executing ClickElement with \"{selector}\" as the selector. Element is attached and visibe. Clicking the element.")
+            logger.info(f'Executing ClickElement with "{selector}" as the selector. Element is attached and visibe. Clicking the element.')
         except Exception:
             # If the element is not visible, try to click it anyway
             pass
@@ -106,27 +106,24 @@ async def do_click(page: Page, selector: str, wait_before_execution: float) -> d
         element_tag_name = await element.evaluate("element => element.tagName.toLowerCase()")
         element_outer_html = await get_element_outer_html(element, page, element_tag_name)
 
-
         if element_tag_name == "option":
             element_value = await element.get_attribute("value") # get the text that is in the value of the option
             parent_element = await element.evaluate_handle("element => element.parentNode")
-            # await parent_element.evaluate(f"element => element.select_option(value=\"{element_value}\")")
             await parent_element.select_option(value=element_value) # type: ignore
-
             logger.info(f'Select menu option "{element_value}" selected')
-
             return {"summary_message": f'Select menu option "{element_value}" selected',
                     "detailed_message": f'Select menu option "{element_value}" selected. The select element\'s outer HTML is: {element_outer_html}.'}
 
+        # Use PlaywrightManager's click method to ensure recording
+        browser_manager = PlaywrightManager()
+        await browser_manager.click(selector)
+        msg = f'Successfully clicked element with selector: "{selector}"'
+        return {"summary_message": msg, "detailed_message": f"{msg} The clicked element's outer HTML is: {element_outer_html}."}
 
-        #Playwright click seems to fail more often than not, disabling it for now and just going with JS click
-        #await perform_playwright_click(element, selector)
-        msg = await perform_javascript_click(page, selector)
-        return {"summary_message": msg, "detailed_message": f"{msg} The clicked element's outer HTML is: {element_outer_html}."} # type: ignore
     except Exception as e:
-        logger.error(f"Unable to click element with selector: \"{selector}\". Error: {e}")
+        logger.error(f'Unable to click element with selector: "{selector}". Error: {e}')
         traceback.print_exc()
-        msg = f"Unable to click element with selector: \"{selector}\" since the selector is invalid. Proceed by retrieving DOM again."
+        msg = f'Unable to click element with selector: "{selector}" since the selector is invalid. Proceed by retrieving DOM again.'
         return {"summary_message": msg, "detailed_message": f"{msg}. Error: {e}"}
 
 
@@ -214,4 +211,3 @@ async def perform_javascript_click(page: Page, selector: str):
     except Exception as e:
         logger.error(f"Error executing JavaScript click on element with selector: {selector}. Error: {e}")
         traceback.print_exc()
-
