@@ -1,6 +1,6 @@
 
 
-# Step to do : 
+# Step to do sur le mac : 
 uv venv
 
 source .venv/bin/activate
@@ -22,7 +22,7 @@ create .env
 
   BROWSER_STORAGE_DIR="/Users/vinh/Library/Application Support/Google/Chrome/Profile 5"
 
-  # LLM Configuration
+  LLM Configuration
   AGENTS_LLM_CONFIG_FILE="agents_llm_config.json"
   AGENTS_LLM_CONFIG_FILE_REF_KEY="openai_gpt"
 
